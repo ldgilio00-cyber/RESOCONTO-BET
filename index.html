@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>Tracker Scommesse</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">
+      <div class="appname">Tracker Scommesse</div>
+      <div class="subtitle" id="subtitle">Offline • iPhone</div>
+    </div>
+    <button class="btn ghost" id="btnBackup">Backup</button>
+  </header>
+
+  <main class="wrap">
+    <!-- Budget -->
+    <section class="card">
+      <div class="row between">
+        <div>
+          <div class="label">Budget iniziale</div>
+          <div class="big" id="budgetStart">€ 0</div>
+        </div>
+        <div>
+          <div class="label">Budget attuale</div>
+          <div class="big" id="budgetNow">€ 0</div>
+        </div>
+      </div>
+
+      <div class="row gap">
+        <input class="input" type="number" step="0.01" id="inpBudget" placeholder="Imposta budget iniziale (es. 100)" />
+        <button class="btn" id="btnSetBudget">Salva</button>
+        <button class="btn danger" id="btnReset">Reset</button>
+      </div>
+      <p class="hint">
+        Logica bankroll: quando inserisci una giocata la puntata viene <b>scalata subito</b>.
+        Quando la chiudi: <b>Vinta</b> aggiunge vincita lorda, <b>Void</b> restituisce la puntata, <b>Persa</b> non restituisce nulla.
+      </p>
+    </section>
+
+    <!-- Nuova giocata -->
+    <section class="card">
+      <div class="h2">Nuova giocata</div>
+
+      <div class="grid">
+        <label class="field">
+          <span>Data</span>
+          <input class="input" type="date" id="fDate" />
+        </label>
+
+        <label class="field">
+          <span>Tipster</span>
+          <input class="input" type="text" id="fTipster" placeholder="es. Marco" />
+        </label>
+
+        <label class="field col2">
+          <span>Evento / Giocata</span>
+          <input class="input" type="text" id="fDesc" placeholder="es. Over 2.5, 1X2, ecc." />
+        </label>
+
+        <label class="field">
+          <span>Quota</span>
+          <input class="input" type="number" step="0.01" id="fOdds" placeholder="es. 1.85" />
+        </label>
+
+        <label class="field">
+          <span>Stake % (opzionale)</span>
+          <input class="input" type="number" step="0.01" id="fStakePct" placeholder="es. 5" />
+        </label>
+
+        <label class="field">
+          <span>Puntata € (opzionale)</span>
+          <input class="input" type="number" step="0.01" id="fStakeAmt" placeholder="es. 10" />
+        </label>
+
+        <label class="field">
+          <span>Esito</span>
+          <select class="input" id="fOutcome">
+            <option>In corso</option>
+            <option>Vinta</option>
+            <option>Persa</option>
+            <option>Void</option>
+          </select>
+        </label>
+
+        <div class="field">
+          <span>&nbsp;</span>
+          <button class="btn" id="btnAdd">Aggiungi</button>
+        </div>
+      </div>
+
+      <p class="hint">
+        Se inserisci sia Stake% che Puntata€, viene usata la Puntata€.
+      </p>
+    </section>
+
+    <!-- Lista -->
+    <section class="card">
+      <div class="row between">
+        <div class="h2">Giocate</div>
+        <div class="row gap">
+          <select class="input" id="filterOutcome">
+            <option value="Tutte">Tutte</option>
+            <option value="In corso">In corso</option>
+            <option value="Vinta">Vinta</option>
+            <option value="Persa">Persa</option>
+            <option value="Void">Void</option>
+          </select>
+          <input class="input" id="search" placeholder="Cerca tipster/evento..." />
+        </div>
+      </div>
+
+      <div class="table" id="list"></div>
+      <p class="hint">Tocca una riga per modificare esito o dati.</p>
+    </section>
+
+    <!-- Statistiche -->
+    <section class="card">
+      <div class="h2">Statistiche</div>
+
+      <div class="stats">
+        <div class="stat"><div class="k">Giocate</div><div class="v" id="sTotal">0</div></div>
+        <div class="stat"><div class="k">Chiuse</div><div class="v" id="sClosed">0</div></div>
+        <div class="stat"><div class="k">Win rate</div><div class="v" id="sWR">0%</div></div>
+        <div class="stat"><div class="k">Puntato</div><div class="v" id="sStaked">€ 0</div></div>
+        <div class="stat"><div class="k">Profitto</div><div class="v" id="sProfit">€ 0</div></div>
+        <div class="stat"><div class="k">ROI</div><div class="v" id="sROI">0%</div></div>
+      </div>
+
+      <div class="charts">
+        <div class="chartCard">
+          <div class="chartTitle">Andamento budget</div>
+          <canvas id="cBank" width="600" height="240"></canvas>
+        </div>
+        <div class="chartCard">
+          <div class="chartTitle">Esiti (chiuse)</div>
+          <canvas id="cPie" width="600" height="240"></canvas>
+        </div>
+        <div class="chartCard">
+          <div class="chartTitle">Profitto per tipster</div>
+          <canvas id="cTip" width="600" height="260"></canvas>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal edit -->
+  <div class="modal" id="modal">
+    <div class="sheet">
+      <div class="row between">
+        <div class="h2">Modifica giocata</div>
+        <button class="btn ghost" id="btnClose">Chiudi</button>
+      </div>
+      <div class="grid">
+        <label class="field"><span>Data</span><input class="input" type="date" id="eDate"></label>
+        <label class="field"><span>Tipster</span><input class="input" id="eTipster"></label>
+        <label class="field col2"><span>Evento</span><input class="input" id="eDesc"></label>
+        <label class="field"><span>Quota</span><input class="input" type="number" step="0.01" id="eOdds"></label>
+        <label class="field"><span>Stake %</span><input class="input" type="number" step="0.01" id="eStakePct"></label>
+        <label class="field"><span>Puntata €</span><input class="input" type="number" step="0.01" id="eStakeAmt"></label>
+        <label class="field"><span>Esito</span>
+          <select class="input" id="eOutcome">
+            <option>In corso</option><option>Vinta</option><option>Persa</option><option>Void</option>
+          </select>
+        </label>
+        <div class="field"><span>&nbsp;</span><button class="btn" id="btnSave">Salva</button></div>
+      </div>
+
+      <div class="row between" style="margin-top:12px;">
+        <button class="btn danger" id="btnDelete">Elimina</button>
+        <div class="hint">Le modifiche ricalcolano budget e statistiche.</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
