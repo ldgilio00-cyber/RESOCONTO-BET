@@ -159,3 +159,53 @@ canvas{width:100%; height:auto; border-radius:12px; background:rgba(0,0,0,.10);}
   .col2{grid-column: span 1;}
   .stats{grid-template-columns:1fr 1fr}
 }
+/* Layout a pagine */
+.page{display:none}
+.page.show{display:block}
+
+/* Tabbar “app-like” */
+.tabbar{
+  position:fixed;
+  left:0; right:0; bottom:0;
+  display:grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap:0;
+  padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+  background:rgba(11,18,32,.92);
+  border-top:1px solid var(--line);
+  backdrop-filter: blur(10px);
+  z-index:20;
+}
+
+.tab{
+  border:0;
+  background:transparent;
+  color:rgba(232,237,247,.70);
+  padding:8px 6px;
+  border-radius:12px;
+  font-weight:800;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  font-size:16px;
+}
+.tab span{font-size:11px; font-weight:800}
+.tab.active{
+  color:rgba(232,237,247,.96);
+  background:rgba(255,255,255,.06);
+  border:1px solid var(--line);
+}
+
+/* più spazio sotto per non finire sotto la tabbar */
+.wrap{
+  padding-bottom: calc(120px + env(safe-area-inset-bottom));
+}
+
+/* iOS date input: look più normale */
+input[type="date"]{
+  -webkit-appearance: none;
+  appearance: none;
+  text-align:left;
+  padding-right:12px;
+}
