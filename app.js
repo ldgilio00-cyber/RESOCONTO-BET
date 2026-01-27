@@ -8,7 +8,7 @@ const money = (n) => "€ " + (Math.round((Number(n) + Number.EPSILON) * 100) / 
 const pct = (n) => (Math.round((Number(n) + Number.EPSILON) * 100) / 100).toFixed(2) + "%";
 const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
 
-const KEY = "ts_v2";
+const KEY = "ts_v3";
 const DEFAULT = { budgetStart: 0, bets: [] };
 
 function load() {
@@ -33,17 +33,16 @@ function calcStakeAmount(budgetBefore, stakePct, stakeAmt) {
 
 /**
  * Recompute:
- * - budgetNow (disponibile): scala subito la puntata, poi risale/aggiunge a bet chiusa
- * - profit per bet: solo quando chiusa (Vinta/Persa/Void), 0 se In corso
- * - bankrollClosedPoints: serie per grafico (si muove SOLO a bet chiusa)
+ * - budgetNow (disponibile): scala subito la puntata (anche In corso) e risale/aggiunge a bet chiusa
+ * - bankrollClosedPoints: serie grafico (si muove SOLO a bet chiusa)
  */
 function recompute(state){
-  let budgetAvail = Number(state.budgetStart || 0);    // quello che vedi in alto (scende anche In corso)
-  let bankrollClosed = Number(state.budgetStart || 0); // quello per grafico (solo chiuse)
+  let budgetAvail = Number(state.budgetStart || 0);    // budget disponibile “reale”
+  let bankrollClosed = Number(state.budgetStart || 0); // bankroll grafico (solo chiuse)
   const closedPoints = [bankrollClosed];
 
+  // calcolo da “vecchia -> nuova”
   for (const b of state.bets.slice().reverse()) {
-    // calcolo stake sulla base del budget disponibile PRIMA
     b.budgetBefore = budgetAvail;
 
     b.stakeUsed = calcStakeAmount(budgetAvail, b.stakePct, b.stakeAmt);
@@ -55,22 +54,19 @@ function recompute(state){
     const odds = Number(b.odds || 0);
     b.winGross = b.stakeUsed * odds;
 
-    // profit e rientri
     if (b.outcome === "Vinta") {
       b.profit = b.stakeUsed * (odds - 1);
-      budgetAvail += b.winGross;       // rientra vincita lorda sul disponibile
-      bankrollClosed += b.profit;      // bankroll “grafico” sale del profitto
+      budgetAvail += b.winGross;          // rientra vincita lorda sul disponibile
+      bankrollClosed += b.profit;         // grafico sale del profitto
       closedPoints.push(bankrollClosed);
     } else if (b.outcome === "Persa") {
       b.profit = -b.stakeUsed;
-      // disponibile: nulla rientra
-      bankrollClosed += b.profit;      // bankroll “grafico” scende quando chiudi persa
+      bankrollClosed += b.profit;         // grafico scende solo quando chiudi persa
       closedPoints.push(bankrollClosed);
     } else if (b.outcome === "Void") {
       b.profit = 0;
-      budgetAvail += b.stakeUsed;      // rimborso puntata
-      // bankroll grafico non cambia, ma è una chiusa: aggiungo punto uguale
-      closedPoints.push(bankrollClosed);
+      budgetAvail += b.stakeUsed;         // rimborso puntata
+      closedPoints.push(bankrollClosed);  // punto uguale (chiusa)
     } else {
       // In corso
       b.profit = 0;
@@ -102,7 +98,6 @@ function showPage(pageId){
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
   document.querySelectorAll(`.tab[data-page="${pageId}"]`).forEach(t => t.classList.add("active"));
 
-  // ricalcola e ridisegna (grafici)
   render();
 }
 
@@ -113,48 +108,26 @@ function render(){
   let state = recompute(load());
   save(state);
 
-  // Budget top (pagina aggiungi)
+  // budget top
   if ($("budgetStart")) $("budgetStart").textContent = money(state.budgetStart || 0);
   if ($("budgetNow")) $("budgetNow").textContent = money(state.budgetNow || 0);
 
-  // Lista scommesse
-  const list = $("list");
-  if (list) {
-    const filt = ($("filterOutcome")?.value || "Tutte");
-    const q = (($("search")?.value || "").trim().toLowerCase());
+  // filtri
+  const filt = ($("filterOutcome")?.value || "Tutte");
+  const q = (($("search")?.value || "").trim().toLowerCase());
+  const match = (b) => {
+    const okF = (filt === "Tutte") || (b.outcome === filt);
+    const okQ = !q || (String(b.tipster||"").toLowerCase().includes(q) || String(b.desc||"").toLowerCase().includes(q));
+    return okF && okQ;
+  };
 
-    const bets = state.bets.filter(b => {
-      const okF = (filt === "Tutte") || (b.outcome === filt);
-      const okQ = !q || (String(b.tipster||"").toLowerCase().includes(q) || String(b.desc||"").toLowerCase().includes(q));
-      return okF && okQ;
-    });
+  const openBets = state.bets.filter(b => b.outcome === "In corso" && match(b));
+  const closedBets = state.bets.filter(b => b.outcome !== "In corso" && match(b));
 
-    list.innerHTML = "";
-    if (!bets.length) list.innerHTML = `<div class="hint">Nessuna scommessa trovata.</div>`;
+  renderBetList("listOpen", openBets, true);
+  renderBetList("listClosed", closedBets, false);
 
-    for (const b of bets) {
-      const el = document.createElement("div");
-      el.className = `item ${badgeClass(b.outcome)}`;
-      el.innerHTML = `
-        <div class="row between">
-          <div class="t1">${b.desc || "(senza descrizione)"}</div>
-          <div class="badge">${b.outcome}</div>
-        </div>
-        <div class="t2">
-          <span>${b.date || ""}</span>
-          <span>Tipster: <b>${b.tipster || "-"}</b></span>
-          <span>Quota: <b>${Number(b.odds||0).toFixed(2)}</b></span>
-          <span>Puntata: <b>${money(b.stakeUsed||0)}</b></span>
-          <span>Vincita: <b>${money(b.winGross||0)}</b></span>
-          <span>Disp.: <b>${money(b.budgetAfter||0)}</b></span>
-        </div>
-      `;
-      el.addEventListener("click", ()=>openEdit(b.id));
-      list.appendChild(el);
-    }
-  }
-
-  // Statistiche (solo chiuse dove ha senso)
+  // stats (chiuse)
   const total = state.bets.length;
   const closed = state.bets.filter(b => b.outcome !== "In corso").length;
   const wins = state.bets.filter(b => b.outcome === "Vinta").length;
@@ -179,14 +152,66 @@ function render(){
   if ($("sProfit")) $("sProfit").textContent = money(profitClosed);
   if ($("sROI")) $("sROI").textContent = pct(roi);
 
-  // Charts (grafico bankroll = SOLO chiuse)
-  if ($("cBank") && $("cPie")) {
-    drawLineChart($("cBank"), state.bankrollClosedPoints || [Number(state.budgetStart||0)]);
-    drawPie($("cPie"), [wins, losses, voids], ["Vinte","Perse","Void"]);
+  // charts
+  if ($("cBank")) drawLineChart($("cBank"), state.bankrollClosedPoints || [Number(state.budgetStart||0)]);
+  if ($("cPie")) drawPie($("cPie"), [wins, losses, voids], ["Vinte","Perse","Void"]);
+  if ($("cTip")) drawBarsSigned($("cTip"), tipsterProfitPairs(state).slice(0, 10));
+
+  renderTipster(state);
+}
+
+function renderBetList(containerId, bets, isOpen){
+  const box = $(containerId);
+  if (!box) return;
+
+  box.innerHTML = "";
+  if (!bets.length) {
+    box.innerHTML = `<div class="hint">Nessuna voce.</div>`;
+    return;
   }
 
-  // Tipster page
-  renderTipster(state);
+  for (const b of bets) {
+    const el = document.createElement("div");
+    el.className = `item ${badgeClass(b.outcome)}`;
+    el.innerHTML = `
+      <div class="row between">
+        <div class="t1">${escapeHtml(b.desc || "(senza descrizione)")}</div>
+        <div class="badge">${b.outcome}</div>
+      </div>
+      <div class="t2">
+        <span>${escapeHtml(b.date || "")}</span>
+        <span>Tipster: <b>${escapeHtml(b.tipster || "-")}</b></span>
+        <span>Quota: <b>${Number(b.odds||0).toFixed(2)}</b></span>
+        <span>Puntata: <b>${money(b.stakeUsed||0)}</b></span>
+        <span>Vincita: <b>${money(b.winGross||0)}</b></span>
+        ${isOpen ? `<span>Disp.: <b>${money(b.budgetAfter||0)}</b></span>` : `<span>Profitto: <b>${money(b.profit||0)}</b></span>`}
+      </div>
+      <div class="itemActions">
+        ${isOpen ? `
+          <button class="miniBtn win" data-act="win">Vinta</button>
+          <button class="miniBtn lose" data-act="lose">Persa</button>
+          <button class="miniBtn void" data-act="void">Void</button>
+        ` : ``}
+        <button class="miniBtn edit" data-act="edit">Modifica</button>
+      </div>
+    `;
+
+    // azioni
+    el.querySelectorAll("button[data-act]").forEach(btn=>{
+      btn.addEventListener("click", (ev)=>{
+        ev.stopPropagation();
+        const act = btn.getAttribute("data-act");
+        if (act === "edit") return openEdit(b.id);
+        if (act === "win") return setOutcome(b.id, "Vinta");
+        if (act === "lose") return setOutcome(b.id, "Persa");
+        if (act === "void") return setOutcome(b.id, "Void");
+      });
+    });
+
+    // tap riga = edit
+    el.addEventListener("click", ()=>openEdit(b.id));
+    box.appendChild(el);
+  }
 }
 
 function setBudget(){
@@ -213,10 +238,8 @@ function addBet(){
 
   if (!b.odds || b.odds <= 1) { alert("Inserisci una quota valida (es. 1.50)"); return; }
 
-  // Inserisci in cima (più recente prima)
   state.bets.unshift(b);
 
-  // pulizia campi rapida
   $("fDesc").value = "";
   $("fOdds").value = "";
   $("fStakePct").value = "";
@@ -225,9 +248,22 @@ function addBet(){
 
   save(state);
   render();
-
-  // porta alla lista (opzionale, commenta se vuoi restare su Aggiungi)
   showPage("page-bets");
+}
+
+function setOutcome(id, outcome){
+  const state = load();
+  const b = state.bets.find(x=>x.id===id);
+  if (!b) return;
+  b.outcome = outcome;
+  save(state);
+  render();
+}
+
+function resetAll(){
+  if (!confirm("Reset totale? Cancella scommesse e budget.")) return;
+  save(structuredClone(DEFAULT));
+  render();
 }
 
 // --- Modal edit
@@ -287,12 +323,6 @@ function deleteBet(){
   render();
 }
 
-function resetAll(){
-  if (!confirm("Reset totale? Cancella scommesse e budget.")) return;
-  save(structuredClone(DEFAULT));
-  render();
-}
-
 // --- Backup
 function backup(){
   const state = load();
@@ -315,7 +345,6 @@ function renderTipster(state){
 
   const closed = state.bets.filter(b => b.outcome !== "In corso");
 
-  // aggrega per tipster
   const m = new Map();
   for (const b of closed) {
     const t = (b.tipster || "Senza tipster").trim() || "Senza tipster";
@@ -345,7 +374,7 @@ function renderTipster(state){
     el.className = "item";
     el.innerHTML = `
       <div class="row between">
-        <div class="t1">${r.tipster}</div>
+        <div class="t1">${escapeHtml(r.tipster)}</div>
         <div class="badge">${money(r.profit)}</div>
       </div>
       <div class="t2">
@@ -360,8 +389,21 @@ function renderTipster(state){
   }
 }
 
+function tipsterProfitPairs(state){
+  const closed = state.bets.filter(b => b.outcome !== "In corso");
+  const byTip = new Map();
+  closed.forEach(b=>{
+    const t = (b.tipster || "Senza tipster").trim() || "Senza tipster";
+    byTip.set(t, (byTip.get(t)||0) + Number(b.profit||0));
+  });
+
+  return Array.from(byTip.entries())
+    .map(([label,value])=>({label, value}))
+    .sort((a,b)=> Math.abs(b.value) - Math.abs(a.value));
+}
+
 // ---------------------------
-// Charts (canvas lightweight, offline)
+// Charts (canvas, offline)
 // ---------------------------
 function clearCanvas(c){
   const ctx = c.getContext("2d");
@@ -373,6 +415,7 @@ function drawText(ctx, x,y, t, size=12, bold=false){
   ctx.fillStyle = "rgba(232,237,247,.92)";
   ctx.fillText(t, x,y);
 }
+
 function drawLineChart(canvas, points){
   const ctx = clearCanvas(canvas);
   const W = canvas.width, H = canvas.height;
@@ -390,7 +433,6 @@ function drawLineChart(canvas, points){
   const max = Math.max(...points);
   const span = (max-min) || 1;
 
-  // axes
   ctx.strokeStyle = "rgba(255,255,255,.18)";
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -399,10 +441,8 @@ function drawLineChart(canvas, points){
   ctx.lineTo(W-pad, H-pad);
   ctx.stroke();
 
-  // line
   ctx.strokeStyle = "rgba(43,124,255,.95)";
   ctx.lineWidth = 2;
-
   ctx.beginPath();
   points.forEach((v,i)=>{
     const x = pad + (i*( (W-2*pad)/(points.length-1) ));
@@ -445,7 +485,6 @@ function drawPie(canvas, values, labels){
     a += ang;
   });
 
-  // legend
   labels.forEach((lab,i)=>{
     const x = 300, y = 70 + i*28;
     ctx.fillStyle = colors[i];
@@ -455,40 +494,108 @@ function drawPie(canvas, values, labels){
   });
 }
 
+/**
+ * Barre con positivo/negativo:
+ * - verde sopra la linea 0
+ * - rosso sotto la linea 0
+ */
+function drawBarsSigned(canvas, pairs){
+  const ctx = clearCanvas(canvas);
+  const W = canvas.width, H = canvas.height;
+  const pad = 34;
+
+  ctx.fillStyle = "rgba(0,0,0,.10)";
+  ctx.fillRect(0,0,W,H);
+
+  if (!pairs || pairs.length === 0) {
+    drawText(ctx, 16, 28, "Nessuna scommessa chiusa con tipster.", 13, true);
+    return;
+  }
+
+  const values = pairs.map(p=>Number(p.value||0));
+  const maxAbs = Math.max(...values.map(v=>Math.abs(v)), 1);
+
+  // asse 0 al centro (più “pro”); se vuoi tutto dal basso dimmelo.
+  const zeroY = pad + (H-2*pad) / 2;
+
+  // axes
+  ctx.strokeStyle = "rgba(255,255,255,.18)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, pad);
+  ctx.lineTo(pad, H-pad);
+  ctx.lineTo(W-pad, H-pad);
+  ctx.stroke();
+
+  // linea zero
+  ctx.strokeStyle = "rgba(255,255,255,.22)";
+  ctx.beginPath();
+  ctx.moveTo(pad, zeroY);
+  ctx.lineTo(W-pad, zeroY);
+  ctx.stroke();
+
+  const bw = (W-2*pad) / Math.max(1, pairs.length);
+
+  pairs.forEach((p,i)=>{
+    const v = Number(p.value||0);
+    const x = pad + i*bw + 10;
+    const barW = Math.max(10, bw-20);
+
+    const h = (Math.abs(v)/maxAbs) * ((H-2*pad)/2 - 8);
+
+    if (v >= 0) {
+      ctx.fillStyle = "rgba(52,211,153,.90)";
+      ctx.fillRect(x, zeroY - h, barW, h);
+    } else {
+      ctx.fillStyle = "rgba(248,113,113,.90)";
+      ctx.fillRect(x, zeroY, barW, h);
+    }
+
+    ctx.fillStyle = "rgba(232,237,247,.92)";
+    drawText(ctx, x, H-pad+18, String(p.label).slice(0,10), 11, true);
+  });
+
+  drawText(ctx, 16, 22, "Verde = profitto • Rosso = perdita", 12, true);
+}
+
 // ---------------------------
-// Init + events
+// Utils
+// ---------------------------
+function escapeHtml(s){
+  return String(s)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+// ---------------------------
+// Init
 // ---------------------------
 function init(){
-  // default date
   if ($("fDate")) $("fDate").value = todayISO();
 
-  // budget actions
   $("btnSetBudget")?.addEventListener("click", setBudget);
   $("btnAdd")?.addEventListener("click", addBet);
   $("btnReset")?.addEventListener("click", resetAll);
 
-  // filters
   $("filterOutcome")?.addEventListener("change", render);
   $("search")?.addEventListener("input", render);
 
-  // modal
   $("btnClose")?.addEventListener("click", closeEdit);
   $("modal")?.addEventListener("click", (e)=>{ if(e.target.id==="modal") closeEdit(); });
   $("btnSave")?.addEventListener("click", saveEdit);
   $("btnDelete")?.addEventListener("click", deleteBet);
 
-  // backup
   $("btnBackup")?.addEventListener("click", backup);
 
-  // tabbar navigation
   document.querySelectorAll(".tab").forEach(btn=>{
     btn.addEventListener("click", ()=> showPage(btn.dataset.page));
   });
 
-  // tipster refresh
   $("btnTipRefresh")?.addEventListener("click", render);
 
-  // first render
   render();
 }
 init();
