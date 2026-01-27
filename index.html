@@ -44,7 +44,8 @@
         </div>
 
         <p class="hint">
-          Il budget disponibile scala la puntata subito. Il grafico invece segue solo le scommesse <b>chiuse</b>.
+          Il budget disponibile scala la puntata subito e poi risale quando chiudi la scommessa.
+          Il <b>grafico bankroll</b> invece segue solo le <b>scommesse chiuse</b> (niente cali mentre sono in corso).
         </p>
       </section>
 
@@ -119,8 +120,13 @@
           </div>
         </div>
 
-        <div class="table" id="list"></div>
-        <p class="hint">Tocca una scommessa per modificarla o chiuderla.</p>
+        <div class="sectionTitle">In corso</div>
+        <div class="table" id="listOpen"></div>
+
+        <div class="sectionTitle" style="margin-top:14px;">Chiuse</div>
+        <div class="table" id="listClosed"></div>
+
+        <p class="hint">Usa i bottoni rapidi per chiuderle al volo, oppure Modifica.</p>
       </section>
     </section>
 
@@ -147,6 +153,11 @@
           <div class="chartCard">
             <div class="chartTitle">Esiti (chiuse)</div>
             <canvas id="cPie" width="600" height="240"></canvas>
+          </div>
+
+          <div class="chartCard">
+            <div class="chartTitle">Profitto per tipster (chiuse)</div>
+            <canvas id="cTip" width="600" height="260"></canvas>
           </div>
         </div>
       </section>
