@@ -23,11 +23,18 @@ function todayISO(){
   return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
 }
 
-function calcStakeAmount(budgetBefore, stakePct, stakeAmt) {
+/**
+ * Stake rules:
+ * - If stakeAmt (manual €) > 0 => use it
+ * - Else if stakePct > 0 => compute from BUDGET START (fixed) => budgetStart * pct/100
+ */
+function calcStakeAmount(budgetStart, stakePct, stakeAmt) {
   const a = Number(stakeAmt || 0);
   if (a > 0) return a;
+
   const p = Number(stakePct || 0);
-  if (p > 0) return Number(budgetBefore) * (p / 100);
+  if (p > 0) return Number(budgetStart || 0) * (p / 100);
+
   return 0;
 }
 
@@ -45,8 +52,12 @@ function recompute(state){
   for (const b of state.bets.slice().reverse()) {
     b.budgetBefore = budgetAvail;
 
-    b.stakeUsed = calcStakeAmount(budgetAvail, b.stakePct, b.stakeAmt);
+    // ✅ stake% sempre su budget iniziale
+    b.stakeUsed = calcStakeAmount(state.budgetStart, b.stakePct, b.stakeAmt);
     b.stakeUsed = Math.max(0, Number(b.stakeUsed || 0));
+
+    // ✅ non permettere che superi il budget disponibile
+    b.stakeUsed = Math.min(b.stakeUsed, Math.max(0, budgetAvail));
 
     // scala subito dal disponibile
     budgetAvail -= b.stakeUsed;
@@ -196,7 +207,6 @@ function renderBetList(containerId, bets, isOpen){
       </div>
     `;
 
-    // azioni
     el.querySelectorAll("button[data-act]").forEach(btn=>{
       btn.addEventListener("click", (ev)=>{
         ev.stopPropagation();
@@ -208,7 +218,6 @@ function renderBetList(containerId, bets, isOpen){
       });
     });
 
-    // tap riga = edit
     el.addEventListener("click", ()=>openEdit(b.id));
     box.appendChild(el);
   }
@@ -468,9 +477,9 @@ function drawPie(canvas, values, labels){
 
   const cx = 160, cy = 120, r = 80;
   const colors = [
-    "rgba(52,211,153,.95)", // win
-    "rgba(248,113,113,.95)", // lose
-    "rgba(148,163,184,.95)"  // void
+    "rgba(52,211,153,.95)",
+    "rgba(248,113,113,.95)",
+    "rgba(148,163,184,.95)"
   ];
 
   let a = -Math.PI/2;
@@ -494,11 +503,6 @@ function drawPie(canvas, values, labels){
   });
 }
 
-/**
- * Barre con positivo/negativo:
- * - verde sopra la linea 0
- * - rosso sotto la linea 0
- */
 function drawBarsSigned(canvas, pairs){
   const ctx = clearCanvas(canvas);
   const W = canvas.width, H = canvas.height;
@@ -515,10 +519,8 @@ function drawBarsSigned(canvas, pairs){
   const values = pairs.map(p=>Number(p.value||0));
   const maxAbs = Math.max(...values.map(v=>Math.abs(v)), 1);
 
-  // asse 0 al centro (più “pro”); se vuoi tutto dal basso dimmelo.
   const zeroY = pad + (H-2*pad) / 2;
 
-  // axes
   ctx.strokeStyle = "rgba(255,255,255,.18)";
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -527,7 +529,6 @@ function drawBarsSigned(canvas, pairs){
   ctx.lineTo(W-pad, H-pad);
   ctx.stroke();
 
-  // linea zero
   ctx.strokeStyle = "rgba(255,255,255,.22)";
   ctx.beginPath();
   ctx.moveTo(pad, zeroY);
