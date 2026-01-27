@@ -4,11 +4,11 @@ if ("serviceWorker" in navigator) {
 }
 
 const $ = (id) => document.getElementById(id);
-const money = (n) => "€ " + (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
-const pct = (n) => (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2) + "%";
+const money = (n) => "€ " + (Math.round((Number(n) + Number.EPSILON) * 100) / 100).toFixed(2);
+const pct = (n) => (Math.round((Number(n) + Number.EPSILON) * 100) / 100).toFixed(2) + "%";
 const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
 
-const KEY = "ts_v1";
+const KEY = "ts_v2";
 const DEFAULT = { budgetStart: 0, bets: [] };
 
 function load() {
@@ -27,44 +27,60 @@ function calcStakeAmount(budgetBefore, stakePct, stakeAmt) {
   const a = Number(stakeAmt || 0);
   if (a > 0) return a;
   const p = Number(stakePct || 0);
-  if (p > 0) return budgetBefore * (p / 100);
+  if (p > 0) return Number(budgetBefore) * (p / 100);
   return 0;
 }
 
-// Ricalcolo "a scalare" su tutta la lista
+/**
+ * Recompute:
+ * - budgetNow (disponibile): scala subito la puntata, poi risale/aggiunge a bet chiusa
+ * - profit per bet: solo quando chiusa (Vinta/Persa/Void), 0 se In corso
+ * - bankrollClosedPoints: serie per grafico (si muove SOLO a bet chiusa)
+ */
 function recompute(state){
-  let budget = Number(state.budgetStart || 0);
+  let budgetAvail = Number(state.budgetStart || 0);    // quello che vedi in alto (scende anche In corso)
+  let bankrollClosed = Number(state.budgetStart || 0); // quello per grafico (solo chiuse)
+  const closedPoints = [bankrollClosed];
 
-  for (const b of state.bets) {
-    b.budgetBefore = budget;
+  for (const b of state.bets.slice().reverse()) {
+    // calcolo stake sulla base del budget disponibile PRIMA
+    b.budgetBefore = budgetAvail;
 
-    b.stakeUsed = calcStakeAmount(budget, b.stakePct, b.stakeAmt);
-    b.stakeUsed = Math.max(0, b.stakeUsed);
+    b.stakeUsed = calcStakeAmount(budgetAvail, b.stakePct, b.stakeAmt);
+    b.stakeUsed = Math.max(0, Number(b.stakeUsed || 0));
 
-    // scalata immediata
-    budget = budget - b.stakeUsed;
+    // scala subito dal disponibile
+    budgetAvail -= b.stakeUsed;
 
     const odds = Number(b.odds || 0);
     b.winGross = b.stakeUsed * odds;
 
-    // chiusura: aggiunte sul budget
+    // profit e rientri
     if (b.outcome === "Vinta") {
-      budget += b.winGross;
       b.profit = b.stakeUsed * (odds - 1);
-    } else if (b.outcome === "Void") {
-      budget += b.stakeUsed;
-      b.profit = 0;
+      budgetAvail += b.winGross;       // rientra vincita lorda sul disponibile
+      bankrollClosed += b.profit;      // bankroll “grafico” sale del profitto
+      closedPoints.push(bankrollClosed);
     } else if (b.outcome === "Persa") {
       b.profit = -b.stakeUsed;
+      // disponibile: nulla rientra
+      bankrollClosed += b.profit;      // bankroll “grafico” scende quando chiudi persa
+      closedPoints.push(bankrollClosed);
+    } else if (b.outcome === "Void") {
+      b.profit = 0;
+      budgetAvail += b.stakeUsed;      // rimborso puntata
+      // bankroll grafico non cambia, ma è una chiusa: aggiungo punto uguale
+      closedPoints.push(bankrollClosed);
     } else {
-      // In corso: profitto non realizzato (0)
+      // In corso
       b.profit = 0;
     }
 
-    b.budgetAfter = budget;
+    b.budgetAfter = budgetAvail;
   }
 
-  state.budgetNow = budget;
+  state.budgetNow = budgetAvail;
+  state.bankrollClosedPoints = closedPoints;
   return state;
 }
 
@@ -75,52 +91,70 @@ function badgeClass(outcome){
   return "out-in";
 }
 
+// ---------------------------
+// Navigation (tabbar)
+// ---------------------------
+function showPage(pageId){
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("show"));
+  const el = $(pageId);
+  if (el) el.classList.add("show");
+
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(`.tab[data-page="${pageId}"]`).forEach(t => t.classList.add("active"));
+
+  // ricalcola e ridisegna (grafici)
+  render();
+}
+
+// ---------------------------
+// Rendering
+// ---------------------------
 function render(){
   let state = recompute(load());
   save(state);
 
-  $("budgetStart").textContent = money(state.budgetStart || 0);
-  $("budgetNow").textContent = money(state.budgetNow || 0);
+  // Budget top (pagina aggiungi)
+  if ($("budgetStart")) $("budgetStart").textContent = money(state.budgetStart || 0);
+  if ($("budgetNow")) $("budgetNow").textContent = money(state.budgetNow || 0);
 
-  // Lista
-  const filt = $("filterOutcome").value;
-  const q = ($("search").value || "").trim().toLowerCase();
-
-  const bets = state.bets.filter(b => {
-    const okF = (filt === "Tutte") || (b.outcome === filt);
-    const okQ = !q || (String(b.tipster||"").toLowerCase().includes(q) || String(b.desc||"").toLowerCase().includes(q));
-    return okF && okQ;
-  });
-
+  // Lista scommesse
   const list = $("list");
-  list.innerHTML = "";
+  if (list) {
+    const filt = ($("filterOutcome")?.value || "Tutte");
+    const q = (($("search")?.value || "").trim().toLowerCase());
 
-  if (!bets.length) {
-    list.innerHTML = `<div class="hint">Nessuna giocata trovata.</div>`;
+    const bets = state.bets.filter(b => {
+      const okF = (filt === "Tutte") || (b.outcome === filt);
+      const okQ = !q || (String(b.tipster||"").toLowerCase().includes(q) || String(b.desc||"").toLowerCase().includes(q));
+      return okF && okQ;
+    });
+
+    list.innerHTML = "";
+    if (!bets.length) list.innerHTML = `<div class="hint">Nessuna scommessa trovata.</div>`;
+
+    for (const b of bets) {
+      const el = document.createElement("div");
+      el.className = `item ${badgeClass(b.outcome)}`;
+      el.innerHTML = `
+        <div class="row between">
+          <div class="t1">${b.desc || "(senza descrizione)"}</div>
+          <div class="badge">${b.outcome}</div>
+        </div>
+        <div class="t2">
+          <span>${b.date || ""}</span>
+          <span>Tipster: <b>${b.tipster || "-"}</b></span>
+          <span>Quota: <b>${Number(b.odds||0).toFixed(2)}</b></span>
+          <span>Puntata: <b>${money(b.stakeUsed||0)}</b></span>
+          <span>Vincita: <b>${money(b.winGross||0)}</b></span>
+          <span>Disp.: <b>${money(b.budgetAfter||0)}</b></span>
+        </div>
+      `;
+      el.addEventListener("click", ()=>openEdit(b.id));
+      list.appendChild(el);
+    }
   }
 
-  for (const b of bets) {
-    const el = document.createElement("div");
-    el.className = `item ${badgeClass(b.outcome)}`;
-    el.innerHTML = `
-      <div class="row between">
-        <div class="t1">${b.desc || "(senza descrizione)"}</div>
-        <div class="badge">${b.outcome}</div>
-      </div>
-      <div class="t2">
-        <span>${b.date || ""}</span>
-        <span>Tipster: <b>${b.tipster || "-"}</b></span>
-        <span>Quota: <b>${Number(b.odds||0).toFixed(2)}</b></span>
-        <span>Puntata: <b>${money(b.stakeUsed||0)}</b></span>
-        <span>Vincita: <b>${money(b.winGross||0)}</b></span>
-        <span>Budget: <b>${money(b.budgetAfter||0)}</b></span>
-      </div>
-    `;
-    el.addEventListener("click", ()=>openEdit(b.id));
-    list.appendChild(el);
-  }
-
-  // Statistiche
+  // Statistiche (solo chiuse dove ha senso)
   const total = state.bets.length;
   const closed = state.bets.filter(b => b.outcome !== "In corso").length;
   const wins = state.bets.filter(b => b.outcome === "Vinta").length;
@@ -138,14 +172,21 @@ function render(){
   const wr = (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0;
   const roi = stakedClosed > 0 ? (profitClosed / stakedClosed) * 100 : 0;
 
-  $("sTotal").textContent = total;
-  $("sClosed").textContent = closed;
-  $("sWR").textContent = pct(wr);
-  $("sStaked").textContent = money(stakedClosed);
-  $("sProfit").textContent = money(profitClosed);
-  $("sROI").textContent = pct(roi);
+  if ($("sTotal")) $("sTotal").textContent = total;
+  if ($("sClosed")) $("sClosed").textContent = closed;
+  if ($("sWR")) $("sWR").textContent = pct(wr);
+  if ($("sStaked")) $("sStaked").textContent = money(stakedClosed);
+  if ($("sProfit")) $("sProfit").textContent = money(profitClosed);
+  if ($("sROI")) $("sROI").textContent = pct(roi);
 
-  drawCharts(state);
+  // Charts (grafico bankroll = SOLO chiuse)
+  if ($("cBank") && $("cPie")) {
+    drawLineChart($("cBank"), state.bankrollClosedPoints || [Number(state.budgetStart||0)]);
+    drawPie($("cPie"), [wins, losses, voids], ["Vinte","Perse","Void"]);
+  }
+
+  // Tipster page
+  renderTipster(state);
 }
 
 function setBudget(){
@@ -162,8 +203,8 @@ function addBet(){
   const b = {
     id: uid(),
     date: $("fDate").value || todayISO(),
-    tipster: $("fTipster").value.trim(),
-    desc: $("fDesc").value.trim(),
+    tipster: ($("fTipster").value || "").trim(),
+    desc: ($("fDesc").value || "").trim(),
     odds: Number($("fOdds").value || 0),
     stakePct: Number($("fStakePct").value || 0),
     stakeAmt: Number($("fStakeAmt").value || 0),
@@ -172,10 +213,10 @@ function addBet(){
 
   if (!b.odds || b.odds <= 1) { alert("Inserisci una quota valida (es. 1.50)"); return; }
 
-  // Inserisci
+  // Inserisci in cima (più recente prima)
   state.bets.unshift(b);
 
-  // pulizia campi veloci
+  // pulizia campi rapida
   $("fDesc").value = "";
   $("fOdds").value = "";
   $("fStakePct").value = "";
@@ -184,6 +225,9 @@ function addBet(){
 
   save(state);
   render();
+
+  // porta alla lista (opzionale, commenta se vuoi restare su Aggiungi)
+  showPage("page-bets");
 }
 
 // --- Modal edit
@@ -217,8 +261,8 @@ function saveEdit(){
   if (!b) return;
 
   b.date = $("eDate").value || todayISO();
-  b.tipster = $("eTipster").value.trim();
-  b.desc = $("eDesc").value.trim();
+  b.tipster = ($("eTipster").value || "").trim();
+  b.desc = ($("eDesc").value || "").trim();
   b.odds = Number($("eOdds").value || 0);
   b.stakePct = Number($("eStakePct").value || 0);
   b.stakeAmt = Number($("eStakeAmt").value || 0);
@@ -236,7 +280,7 @@ function deleteBet(){
   const idx = state.bets.findIndex(x=>x.id===editingId);
   if (idx < 0) return;
 
-  if (!confirm("Eliminare questa giocata?")) return;
+  if (!confirm("Eliminare questa scommessa?")) return;
   state.bets.splice(idx,1);
   save(state);
   closeEdit();
@@ -244,12 +288,12 @@ function deleteBet(){
 }
 
 function resetAll(){
-  if (!confirm("Reset totale? Cancella giocate e budget.")) return;
+  if (!confirm("Reset totale? Cancella scommesse e budget.")) return;
   save(structuredClone(DEFAULT));
   render();
 }
 
-// --- Backup / restore
+// --- Backup
 function backup(){
   const state = load();
   const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
@@ -259,10 +303,66 @@ function backup(){
   a.download = `tracker-scommesse-backup-${todayISO()}.json`;
   a.click();
   setTimeout(()=>URL.revokeObjectURL(url), 5000);
-  alert("Backup scaricato. Conservalo in File/iCloud.");
+  alert("Backup scaricato. Salvalo in File/iCloud.");
 }
 
-// --- Chart helpers (canvas, leggero e offline)
+// ---------------------------
+// Tipster page
+// ---------------------------
+function renderTipster(state){
+  const box = $("tipList");
+  if (!box) return;
+
+  const closed = state.bets.filter(b => b.outcome !== "In corso");
+
+  // aggrega per tipster
+  const m = new Map();
+  for (const b of closed) {
+    const t = (b.tipster || "Senza tipster").trim() || "Senza tipster";
+    if (!m.has(t)) m.set(t, { tipster:t, bets:0, wins:0, losses:0, voids:0, staked:0, profit:0 });
+    const x = m.get(t);
+    x.bets += 1;
+    if (b.outcome === "Vinta") x.wins += 1;
+    if (b.outcome === "Persa") x.losses += 1;
+    if (b.outcome === "Void") x.voids += 1;
+    x.staked += Number(b.stakeUsed||0);
+    x.profit += Number(b.profit||0);
+  }
+
+  const rows = Array.from(m.values()).sort((a,b)=> (b.profit - a.profit));
+
+  if (!rows.length) {
+    box.innerHTML = `<div class="hint">Ancora nessuna scommessa chiusa.</div>`;
+    return;
+  }
+
+  box.innerHTML = "";
+  for (const r of rows) {
+    const wr = (r.wins + r.losses) > 0 ? (r.wins / (r.wins + r.losses)) * 100 : 0;
+    const roi = r.staked > 0 ? (r.profit / r.staked) * 100 : 0;
+
+    const el = document.createElement("div");
+    el.className = "item";
+    el.innerHTML = `
+      <div class="row between">
+        <div class="t1">${r.tipster}</div>
+        <div class="badge">${money(r.profit)}</div>
+      </div>
+      <div class="t2">
+        <span>Chiuse: <b>${r.bets}</b></span>
+        <span>W-L-V: <b>${r.wins}-${r.losses}-${r.voids}</b></span>
+        <span>WR: <b>${pct(wr)}</b></span>
+        <span>ROI: <b>${pct(roi)}</b></span>
+        <span>Puntato: <b>${money(r.staked)}</b></span>
+      </div>
+    `;
+    box.appendChild(el);
+  }
+}
+
+// ---------------------------
+// Charts (canvas lightweight, offline)
+// ---------------------------
 function clearCanvas(c){
   const ctx = c.getContext("2d");
   ctx.clearRect(0,0,c.width,c.height);
@@ -278,12 +378,11 @@ function drawLineChart(canvas, points){
   const W = canvas.width, H = canvas.height;
   const pad = 34;
 
-  // background
   ctx.fillStyle = "rgba(0,0,0,.10)";
   ctx.fillRect(0,0,W,H);
 
-  if (points.length < 2) {
-    drawText(ctx, 16, 28, "Aggiungi almeno 2 giocate per vedere il grafico.", 13, true);
+  if (!points || points.length < 2) {
+    drawText(ctx, 16, 28, "Chiudi almeno 1 scommessa per vedere il grafico.", 13, true);
     return;
   }
 
@@ -323,7 +422,7 @@ function drawPie(canvas, values, labels){
 
   const total = values.reduce((s,v)=>s+v,0);
   if (!total){
-    drawText(ctx, 16, 28, "Nessuna giocata chiusa.", 13, true);
+    drawText(ctx, 16, 28, "Nessuna scommessa chiusa.", 13, true);
     return;
   }
 
@@ -356,90 +455,40 @@ function drawPie(canvas, values, labels){
   });
 }
 
-function drawBars(canvas, pairs){
-  const ctx = clearCanvas(canvas);
-  const W = canvas.width, H = canvas.height;
-  const pad = 34;
-  ctx.fillStyle = "rgba(0,0,0,.10)";
-  ctx.fillRect(0,0,W,H);
-
-  if (!pairs.length){
-    drawText(ctx, 16, 28, "Nessuna giocata chiusa con tipster.", 13, true);
-    return;
-  }
-
-  const vals = pairs.map(p=>p.value);
-  const max = Math.max(...vals, 1);
-  const bw = (W-2*pad) / Math.max(1, pairs.length);
-
-  // axes
-  ctx.strokeStyle = "rgba(255,255,255,.18)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(pad, pad);
-  ctx.lineTo(pad, H-pad);
-  ctx.lineTo(W-pad, H-pad);
-  ctx.stroke();
-
-  pairs.forEach((p,i)=>{
-    const x = pad + i*bw + 10;
-    const h = (p.value/max) * (H-2*pad);
-    const y = (H-pad) - h;
-
-    ctx.fillStyle = "rgba(43,124,255,.85)";
-    ctx.fillRect(x, y, Math.max(8, bw-20), h);
-
-    ctx.fillStyle = "rgba(232,237,247,.92)";
-    drawText(ctx, x, H-pad+18, p.label.slice(0,10), 11, true);
-  });
-}
-
-function drawCharts(state){
-  // Bankroll points: start + after each bet
-  const points = [Number(state.budgetStart||0)];
-  state.bets.slice().reverse().forEach(b => points.push(Number(b.budgetAfter||0)));
-  drawLineChart($("cBank"), points);
-
-  const closed = state.bets.filter(b => b.outcome !== "In corso");
-  const w = closed.filter(b=>b.outcome==="Vinta").length;
-  const l = closed.filter(b=>b.outcome==="Persa").length;
-  const v = closed.filter(b=>b.outcome==="Void").length;
-  drawPie($("cPie"), [w,l,v], ["Vinte","Perse","Void"]);
-
-  const byTip = new Map();
-  closed.forEach(b=>{
-    const t = (b.tipster||"Senza tipster").trim() || "Senza tipster";
-    byTip.set(t, (byTip.get(t)||0) + Number(b.profit||0));
-  });
-  const pairs = Array.from(byTip.entries())
-    .map(([label,value])=>({label,value}))
-    .sort((a,b)=>Math.abs(b.value)-Math.abs(a.value))
-    .slice(0,8);
-
-  // per grafico "assoluto": valori negativi tagliati? (semplice)
-  // Qui mostro solo profitti >= 0 per pulizia; se vuoi includo anche negativi con barre rosse.
-  const nonNeg = pairs.map(p=>({label:p.label,value:Math.max(0,p.value)}));
-  drawBars($("cTip"), nonNeg);
-}
-
-// --- Init
+// ---------------------------
+// Init + events
+// ---------------------------
 function init(){
-  $("fDate").value = todayISO();
+  // default date
+  if ($("fDate")) $("fDate").value = todayISO();
 
-  $("btnSetBudget").addEventListener("click", setBudget);
-  $("btnAdd").addEventListener("click", addBet);
-  $("btnReset").addEventListener("click", resetAll);
+  // budget actions
+  $("btnSetBudget")?.addEventListener("click", setBudget);
+  $("btnAdd")?.addEventListener("click", addBet);
+  $("btnReset")?.addEventListener("click", resetAll);
 
-  $("filterOutcome").addEventListener("change", render);
-  $("search").addEventListener("input", render);
+  // filters
+  $("filterOutcome")?.addEventListener("change", render);
+  $("search")?.addEventListener("input", render);
 
-  $("btnClose").addEventListener("click", closeEdit);
-  $("modal").addEventListener("click", (e)=>{ if(e.target.id==="modal") closeEdit(); });
-  $("btnSave").addEventListener("click", saveEdit);
-  $("btnDelete").addEventListener("click", deleteBet);
+  // modal
+  $("btnClose")?.addEventListener("click", closeEdit);
+  $("modal")?.addEventListener("click", (e)=>{ if(e.target.id==="modal") closeEdit(); });
+  $("btnSave")?.addEventListener("click", saveEdit);
+  $("btnDelete")?.addEventListener("click", deleteBet);
 
-  $("btnBackup").addEventListener("click", backup);
+  // backup
+  $("btnBackup")?.addEventListener("click", backup);
 
+  // tabbar navigation
+  document.querySelectorAll(".tab").forEach(btn=>{
+    btn.addEventListener("click", ()=> showPage(btn.dataset.page));
+  });
+
+  // tipster refresh
+  $("btnTipRefresh")?.addEventListener("click", render);
+
+  // first render
   render();
 }
 init();
