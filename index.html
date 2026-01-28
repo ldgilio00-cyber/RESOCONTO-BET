@@ -14,9 +14,14 @@
   <header class="topbar">
     <div class="title">
       <div class="appname">Tracker Scommesse</div>
-      <div class="subtitle" id="subtitle">Offline • iPhone</div>
+      <div class="subtitle" id="subtitle">Offline • PWA</div>
     </div>
-    <button class="btn ghost" id="btnBackup">Backup</button>
+
+    <div class="row gap">
+      <button class="btn ghost" id="btnImport">Importa</button>
+      <button class="btn ghost" id="btnBackup">Backup</button>
+      <input id="fileImport" type="file" accept="application/json" style="display:none" />
+    </div>
   </header>
 
   <main class="wrap">
@@ -44,8 +49,9 @@
         </div>
 
         <p class="hint">
-          Il budget disponibile scala la puntata subito e poi risale quando chiudi la scommessa.
-          Il <b>grafico bankroll</b> invece segue solo le <b>scommesse chiuse</b> (niente cali mentre sono in corso).
+          ✅ Stake% è sempre calcolato sul <b>budget iniziale</b>. <br>
+          Il budget disponibile scende quando inserisci “In corso” e risale quando chiudi. <br>
+          Il grafico bankroll si muove solo a scommesse <b>chiuse</b>.
         </p>
       </section>
 
@@ -74,12 +80,12 @@
           </label>
 
           <label class="field">
-            <span>Stake % (opzionale)</span>
+            <span>Stake % (su budget iniziale)</span>
             <input class="input" type="number" step="0.01" id="fStakePct" placeholder="es. 5" />
           </label>
 
           <label class="field">
-            <span>Puntata € (opzionale)</span>
+            <span>Puntata € (prioritaria)</span>
             <input class="input" type="number" step="0.01" id="fStakeAmt" placeholder="es. 10" />
           </label>
 
@@ -103,7 +109,7 @@
       </section>
     </section>
 
-    <!-- ===================== PAGE: SCOMMESSE (LISTA) ===================== -->
+    <!-- ===================== PAGE: SCOMMESSE ===================== -->
     <section class="page" id="page-bets">
       <section class="card">
         <div class="row between">
@@ -126,7 +132,19 @@
         <div class="sectionTitle" style="margin-top:14px;">Chiuse</div>
         <div class="table" id="listClosed"></div>
 
-        <p class="hint">Usa i bottoni rapidi per chiuderle al volo, oppure Modifica.</p>
+        <p class="hint">Bottoni rapidi per chiudere al volo oppure Modifica.</p>
+      </section>
+    </section>
+
+    <!-- ===================== PAGE: GIORNI ===================== -->
+    <section class="page" id="page-days">
+      <section class="card">
+        <div class="row between">
+          <div class="h2">Giorni</div>
+          <div class="hint">Profitto = solo scommesse chiuse (in corso non influenzano).</div>
+        </div>
+
+        <div class="table" id="daysList"></div>
       </section>
     </section>
 
@@ -182,7 +200,8 @@
   <nav class="tabbar">
     <button class="tab active" data-page="page-add">➕<span>Aggiungi</span></button>
     <button class="tab" data-page="page-bets">📋<span>Scommesse</span></button>
-    <button class="tab" data-page="page-stats">📈<span>Statistiche</span></button>
+    <button class="tab" data-page="page-days">📅<span>Giorni</span></button>
+    <button class="tab" data-page="page-stats">📈<span>Stats</span></button>
     <button class="tab" data-page="page-tipster">👤<span>Tipster</span></button>
   </nav>
 
