@@ -8,14 +8,69 @@ const money = (n) => "€ " + (Math.round((Number(n) + Number.EPSILON) * 100) / 
 const pct = (n) => (Math.round((Number(n) + Number.EPSILON) * 100) / 100).toFixed(2) + "%";
 const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
 
-const KEY = "ts_v3";
+// ✅ nuova chiave, ma con migrazione automatica
+const KEY = "ts_v5";
+const OLD_KEYS = ["ts_v4","ts_v3","ts_v2","ts_v1","ts_v0","ts"];
 const DEFAULT = { budgetStart: 0, bets: [] };
 
-function load() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || structuredClone(DEFAULT); }
-  catch { return structuredClone(DEFAULT); }
+function safeParse(raw){
+  try { return JSON.parse(raw); } catch { return null; }
 }
-function save(state) { localStorage.setItem(KEY, JSON.stringify(state)); }
+
+function normalizeState(s){
+  const state = (s && typeof s === "object") ? s : structuredClone(DEFAULT);
+  if (typeof state.budgetStart !== "number") state.budgetStart = Number(state.budgetStart || 0);
+
+  if (!Array.isArray(state.bets)) state.bets = [];
+  state.bets = state.bets.map(b => normalizeBet(b)).filter(Boolean);
+
+  // ordina: più recente prima (per data + fallback)
+  state.bets.sort((a,b)=>{
+    const da = String(a.date||"");
+    const db = String(b.date||"");
+    if (da !== db) return db.localeCompare(da);
+    return String(b.id).localeCompare(String(a.id));
+  });
+
+  return state;
+}
+
+function normalizeBet(b){
+  if (!b || typeof b !== "object") return null;
+  const nb = { ...b };
+  if (!nb.id) nb.id = uid();
+  nb.date = (nb.date || "").trim() || todayISO();
+  nb.tipster = (nb.tipster || "").trim();
+  nb.desc = (nb.desc || "").trim();
+  nb.odds = Number(nb.odds || 0);
+  nb.stakePct = Number(nb.stakePct || 0);
+  nb.stakeAmt = Number(nb.stakeAmt || 0);
+  nb.outcome = nb.outcome || "In corso";
+  if (!["In corso","Vinta","Persa","Void"].includes(nb.outcome)) nb.outcome = "In corso";
+  return nb;
+}
+
+function load() {
+  // 1) prova nuova key
+  const cur = safeParse(localStorage.getItem(KEY));
+  if (cur) return normalizeState(cur);
+
+  // 2) migrazione automatica
+  for (const k of OLD_KEYS) {
+    const old = safeParse(localStorage.getItem(k));
+    if (old) {
+      const migrated = normalizeState(old);
+      save(migrated);
+      return migrated;
+    }
+  }
+
+  return structuredClone(DEFAULT);
+}
+
+function save(state) {
+  localStorage.setItem(KEY, JSON.stringify(state));
+}
 
 function todayISO(){
   const d = new Date();
@@ -123,7 +178,7 @@ function render(){
   if ($("budgetStart")) $("budgetStart").textContent = money(state.budgetStart || 0);
   if ($("budgetNow")) $("budgetNow").textContent = money(state.budgetNow || 0);
 
-  // filtri
+  // filtri scommesse
   const filt = ($("filterOutcome")?.value || "Tutte");
   const q = (($("search")?.value || "").trim().toLowerCase());
   const match = (b) => {
@@ -137,6 +192,9 @@ function render(){
 
   renderBetList("listOpen", openBets, true);
   renderBetList("listClosed", closedBets, false);
+
+  // Giorni
+  renderDays(state);
 
   // stats (chiuse)
   const total = state.bets.length;
@@ -223,6 +281,129 @@ function renderBetList(containerId, bets, isOpen){
   }
 }
 
+// -------- Giorni (accordion)
+function renderDays(state){
+  const box = $("daysList");
+  if (!box) return;
+
+  // raggruppa per data
+  const map = new Map();
+  for (const b of state.bets) {
+    const d = (b.date || "").trim() || "Senza data";
+    if (!map.has(d)) map.set(d, []);
+    map.get(d).push(b);
+  }
+
+  const dates = Array.from(map.keys()).sort((a,b)=> b.localeCompare(a)); // YYYY-MM-DD desc
+  box.innerHTML = "";
+
+  if (!dates.length) {
+    box.innerHTML = `<div class="hint">Nessuna scommessa ancora.</div>`;
+    return;
+  }
+
+  for (const d of dates) {
+    const bets = map.get(d);
+
+    const closed = bets.filter(x => x.outcome !== "In corso");
+    const open = bets.filter(x => x.outcome === "In corso");
+
+    const profit = closed.reduce((s,x)=> s + Number(x.profit||0), 0);
+    const wins = closed.filter(x => x.outcome==="Vinta").length;
+    const losses = closed.filter(x => x.outcome==="Persa").length;
+    const voids = closed.filter(x => x.outcome==="Void").length;
+
+    let cls = "neu";
+    if (profit > 0) cls = "pos";
+    if (profit < 0) cls = "neg";
+
+    const day = document.createElement("div");
+    day.className = "dayCard";
+
+    const header = document.createElement("div");
+    header.className = "dayHeader";
+    header.innerHTML = `
+      <div class="dayTitle">
+        <div>${escapeHtml(d)}</div>
+        <div class="dayMeta">
+          Tot: <b>${bets.length}</b> • In corso: <b>${open.length}</b> • Chiuse: <b>${closed.length}</b>
+          • W-L-V: <b>${wins}-${losses}-${voids}</b>
+        </div>
+      </div>
+      <div class="dayProfit ${cls}">${money(profit)}</div>
+    `;
+
+    const body = document.createElement("div");
+    body.className = "dayBody";
+
+    // Dentro al body: lista scommesse di quel giorno (con quick close se in corso)
+    const inner = document.createElement("div");
+    inner.className = "table";
+    body.appendChild(inner);
+    renderBetsInto(inner, bets);
+
+    header.addEventListener("click", ()=>{
+      body.classList.toggle("show");
+    });
+
+    day.appendChild(header);
+    day.appendChild(body);
+    box.appendChild(day);
+  }
+}
+
+function renderBetsInto(containerEl, bets){
+  containerEl.innerHTML = "";
+
+  // ordina: in corso prima, poi chiuse
+  const sorted = bets.slice().sort((a,b)=>{
+    const ao = a.outcome === "In corso" ? 0 : 1;
+    const bo = b.outcome === "In corso" ? 0 : 1;
+    if (ao !== bo) return ao - bo;
+    return String(b.id).localeCompare(String(a.id));
+  });
+
+  for (const b of sorted) {
+    const isOpen = b.outcome === "In corso";
+    const el = document.createElement("div");
+    el.className = `item ${badgeClass(b.outcome)}`;
+    el.innerHTML = `
+      <div class="row between">
+        <div class="t1">${escapeHtml(b.desc || "(senza descrizione)")}</div>
+        <div class="badge">${b.outcome}</div>
+      </div>
+      <div class="t2">
+        <span>Tipster: <b>${escapeHtml(b.tipster || "-")}</b></span>
+        <span>Quota: <b>${Number(b.odds||0).toFixed(2)}</b></span>
+        <span>Puntata: <b>${money(b.stakeUsed||0)}</b></span>
+        ${isOpen ? `` : `<span>Profitto: <b>${money(b.profit||0)}</b></span>`}
+      </div>
+      <div class="itemActions">
+        ${isOpen ? `
+          <button class="miniBtn win" data-act="win">Vinta</button>
+          <button class="miniBtn lose" data-act="lose">Persa</button>
+          <button class="miniBtn void" data-act="void">Void</button>
+        ` : ``}
+        <button class="miniBtn edit" data-act="edit">Modifica</button>
+      </div>
+    `;
+
+    el.querySelectorAll("button[data-act]").forEach(btn=>{
+      btn.addEventListener("click", (ev)=>{
+        ev.stopPropagation();
+        const act = btn.getAttribute("data-act");
+        if (act === "edit") return openEdit(b.id);
+        if (act === "win") return setOutcome(b.id, "Vinta");
+        if (act === "lose") return setOutcome(b.id, "Persa");
+        if (act === "void") return setOutcome(b.id, "Void");
+      });
+    });
+
+    el.addEventListener("click", ()=>openEdit(b.id));
+    containerEl.appendChild(el);
+  }
+}
+
 function setBudget(){
   const state = load();
   const v = Number($("inpBudget").value || 0);
@@ -234,7 +415,7 @@ function setBudget(){
 function addBet(){
   const state = load();
 
-  const b = {
+  const b = normalizeBet({
     id: uid(),
     date: $("fDate").value || todayISO(),
     tipster: ($("fTipster").value || "").trim(),
@@ -243,7 +424,7 @@ function addBet(){
     stakePct: Number($("fStakePct").value || 0),
     stakeAmt: Number($("fStakeAmt").value || 0),
     outcome: $("fOutcome").value || "In corso"
-  };
+  });
 
   if (!b.odds || b.odds <= 1) { alert("Inserisci una quota valida (es. 1.50)"); return; }
 
@@ -343,6 +524,53 @@ function backup(){
   a.click();
   setTimeout(()=>URL.revokeObjectURL(url), 5000);
   alert("Backup scaricato. Salvalo in File/iCloud.");
+}
+
+// --- Import
+function importFromFile(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    const obj = safeParse(reader.result);
+    if (!obj) { alert("File non valido."); return; }
+
+    const incoming = normalizeState(obj);
+    const current = load();
+
+    // OK = sostituisci, Annulla = unisci
+    const replace = confirm("Import: OK = Sostituisci tutto. Annulla = Unisci ai dati attuali.");
+    if (replace) {
+      save(incoming);
+      render();
+      alert("Import completato (sostituzione).");
+      return;
+    }
+
+    // Merge: dedupe by id
+    const ids = new Set(current.bets.map(b=>b.id));
+    const merged = current.bets.slice();
+
+    for (const b of incoming.bets) {
+      const bet = normalizeBet(b);
+      if (!bet.id || ids.has(bet.id)) {
+        bet.id = uid();
+      }
+      ids.add(bet.id);
+      merged.push(bet);
+    }
+
+    // budgetStart: se il tuo è 0 e l'import ha un valore, prendilo
+    if ((Number(current.budgetStart||0) === 0) && Number(incoming.budgetStart||0) > 0) {
+      current.budgetStart = incoming.budgetStart;
+    }
+
+    current.bets = merged;
+    const finalState = normalizeState(current);
+    save(finalState);
+    render();
+    alert("Import completato (unione).");
+  };
+
+  reader.readAsText(file);
 }
 
 // ---------------------------
@@ -518,7 +746,6 @@ function drawBarsSigned(canvas, pairs){
 
   const values = pairs.map(p=>Number(p.value||0));
   const maxAbs = Math.max(...values.map(v=>Math.abs(v)), 1);
-
   const zeroY = pad + (H-2*pad) / 2;
 
   ctx.strokeStyle = "rgba(255,255,255,.18)";
@@ -541,7 +768,6 @@ function drawBarsSigned(canvas, pairs){
     const v = Number(p.value||0);
     const x = pad + i*bw + 10;
     const barW = Math.max(10, bw-20);
-
     const h = (Math.abs(v)/maxAbs) * ((H-2*pad)/2 - 8);
 
     if (v >= 0) {
@@ -590,6 +816,14 @@ function init(){
   $("btnDelete")?.addEventListener("click", deleteBet);
 
   $("btnBackup")?.addEventListener("click", backup);
+
+  // Import
+  $("btnImport")?.addEventListener("click", ()=> $("fileImport").click());
+  $("fileImport")?.addEventListener("change", (e)=>{
+    const f = e.target.files?.[0];
+    if (f) importFromFile(f);
+    e.target.value = "";
+  });
 
   document.querySelectorAll(".tab").forEach(btn=>{
     btn.addEventListener("click", ()=> showPage(btn.dataset.page));
