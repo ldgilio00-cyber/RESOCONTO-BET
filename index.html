@@ -1,97 +1,120 @@
+<!-- index.html -->
 <!doctype html>
 <html lang="it">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0b1220" />
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icon-192.png">
   <title>Tracker Scommesse</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
-
 <body>
   <header class="topbar">
-    <div class="title">
-      <div class="appname">Tracker Scommesse</div>
-      <div class="subtitle" id="subtitle">Offline • PWA</div>
+    <div class="topbarInner">
+      <div class="brand">
+        <div class="brandTitle">Tracker Scommesse</div>
+        <div class="brandSub">Offline • LocalStorage</div>
+      </div>
+
+      <div class="totals">
+        <div class="pill">
+          <div class="pillLabel">Bankroll iniziale</div>
+          <div id="budgetStart" class="pillValue">€ 0,00</div>
+        </div>
+        <div class="pill">
+          <div class="pillLabel">Disponibile totale</div>
+          <div id="budgetNow" class="pillValue">€ 0,00</div>
+        </div>
+      </div>
     </div>
 
-    <div class="row gap">
-      <button class="btn ghost" id="btnImport">Importa</button>
-      <button class="btn ghost" id="btnBackup">Backup</button>
-      <input id="fileImport" type="file" accept="application/json" style="display:none" />
+    <div class="miniBooks">
+      <div id="miniBooksRow" class="miniBooksRow"></div>
+      <button class="ghostBtn" id="btnGoBooks" title="Vai a Bookmakers">Gestisci Bookmakers →</button>
     </div>
   </header>
 
-  <main class="wrap">
+  <main class="main">
+    <!-- Aggiungi -->
+    <section id="page-add" class="page show">
+      <div class="card">
+        <div class="cardTitle">Aggiungi scommessa</div>
 
-    <!-- ===================== PAGE: AGGIUNGI ===================== -->
-    <section class="page show" id="page-add">
-      <section class="card">
-        <div class="row between">
-          <div>
-            <div class="label">Budget iniziale</div>
-            <div class="big" id="budgetStart">€ 0</div>
-          </div>
-          <div>
-            <div class="label">Budget disponibile</div>
-            <div class="big" id="budgetNow">€ 0</div>
-          </div>
-        </div>
-
-        <div class="budgetActions">
-          <input class="input" type="number" step="0.01" id="inpBudget" placeholder="Imposta budget iniziale (es. 100)" />
-          <div class="budgetBtns">
-            <button class="btn" id="btnSetBudget">Salva</button>
-            <button class="btn danger" id="btnReset">Reset</button>
-          </div>
-        </div>
-
-        <p class="hint">
-          ✅ Stake% è sempre calcolato sul <b>budget iniziale</b>. <br>
-          Il budget disponibile scende quando inserisci “In corso” e risale quando chiudi. <br>
-          Il grafico bankroll si muove solo a scommesse <b>chiuse</b>.
-        </p>
-      </section>
-
-      <section class="card">
-        <div class="h2">Aggiungi scommessa</div>
-
-        <div class="grid">
+        <div class="formGrid">
           <label class="field">
             <span>Data</span>
-            <input class="input" type="date" id="fDate" />
+            <input id="fDate" type="date" />
+          </label>
+
+          <label class="field">
+            <span>Bookmaker</span>
+            <select id="fBook"></select>
           </label>
 
           <label class="field">
             <span>Tipster</span>
-            <input class="input" type="text" id="fTipster" placeholder="es. Marco" />
+            <input id="fTipster" type="text" placeholder="Es. Mario" />
           </label>
 
-          <label class="field col2">
-            <span>Evento / Giocata</span>
-            <input class="input" type="text" id="fDesc" placeholder="es. Over 2.5, 1X2, ecc." />
+          <label class="field fieldWide">
+            <span>Descrizione</span>
+            <input id="fDesc" type="text" placeholder="Es. Over 2.5, Tennis, ecc." />
           </label>
 
           <label class="field">
             <span>Quota</span>
-            <input class="input" type="number" step="0.01" id="fOdds" placeholder="es. 1.85" />
+            <input id="fOdds" type="number" inputmode="decimal" step="0.01" placeholder="1.50" />
           </label>
 
           <label class="field">
-            <span>Stake % (su budget iniziale)</span>
-            <input class="input" type="number" step="0.01" id="fStakePct" placeholder="es. 5" />
+            <span>Puntata % (su base)</span>
+            <input id="fStakePct" type="number" inputmode="decimal" step="0.01" placeholder="2" />
           </label>
 
           <label class="field">
-            <span>Puntata € (prioritaria)</span>
-            <input class="input" type="number" step="0.01" id="fStakeAmt" placeholder="es. 10" />
+            <span>Puntata € (manuale)</span>
+            <input id="fStakeAmt" type="number" inputmode="decimal" step="0.01" placeholder="10" />
           </label>
 
           <label class="field">
             <span>Esito</span>
-            <select class="input" id="fOutcome">
+            <select id="fOutcome">
+              <option>In corso</option>
+              <option>Vinta</option>
+              <option>Persa</option>
+              <option>Void</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row between gap">
+          <div class="hint" id="stakePreview">Puntata calcolata: € 0,00</div>
+          <button id="btnAdd" class="btn primary">Aggiungi</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle">Backup & Import</div>
+        <div class="row gap wrap">
+          <button id="btnBackup" class="btn">Backup JSON</button>
+          <button id="btnImport" class="btn">Import JSON</button>
+          <input id="fileImport" type="file" accept="application/json" hidden />
+          <button id="btnReset" class="btn danger">Reset totale</button>
+        </div>
+        <div class="hint">Import: puoi <b>Sostituire</b> o <b>Unire</b>. Migrazione automatica inclusa.</div>
+      </div>
+    </section>
+
+    <!-- Scommesse -->
+    <section id="page-bets" class="page">
+      <div class="card">
+        <div class="cardTitle">Scommesse</div>
+        <div class="row gap wrap">
+          <label class="field inline">
+            <span>Filtro</span>
+            <select id="filterOutcome">
+              <option>Tutte</option>
               <option>In corso</option>
               <option>Vinta</option>
               <option>Persa</option>
@@ -99,142 +122,258 @@
             </select>
           </label>
 
-          <div class="field">
-            <span>&nbsp;</span>
-            <button class="btn" id="btnAdd">Aggiungi</button>
-          </div>
+          <label class="field inline grow">
+            <span>Cerca</span>
+            <input id="search" type="text" placeholder="Tipster o descrizione..." />
+          </label>
         </div>
+      </div>
 
-        <p class="hint">Se inserisci sia Stake% che Puntata€, viene usata la Puntata€.</p>
-      </section>
+      <div class="card">
+        <div class="row between">
+          <div class="cardTitle">In corso</div>
+          <div class="hint">Lo stake scala solo dal bookmaker selezionato</div>
+        </div>
+        <div id="listOpen"></div>
+      </div>
+
+      <div class="card">
+        <div class="row between">
+          <div class="cardTitle">Chiuse</div>
+          <div class="hint">Grafici e ROI si muovono solo sulle chiuse</div>
+        </div>
+        <div id="listClosed"></div>
+      </div>
     </section>
 
-    <!-- ===================== PAGE: SCOMMESSE ===================== -->
-    <section class="page" id="page-bets">
-      <section class="card">
-        <div class="row between">
-          <div class="h2">Scommesse</div>
-          <div class="row gap">
-            <select class="input" id="filterOutcome">
-              <option value="Tutte">Tutte</option>
-              <option value="In corso">In corso</option>
-              <option value="Vinta">Vinta</option>
-              <option value="Persa">Persa</option>
-              <option value="Void">Void</option>
+    <!-- Giorni -->
+    <section id="page-days" class="page">
+      <div class="card">
+        <div class="cardTitle">Giorni</div>
+        <div class="row gap wrap">
+          <label class="field inline">
+            <span>Mostra</span>
+            <select id="daysFilter">
+              <option value="all">Tutte</option>
+              <option value="closed">Solo chiuse</option>
+              <option value="open">Solo in corso</option>
             </select>
-            <input class="input" id="search" placeholder="Cerca tipster/evento..." />
-          </div>
+          </label>
+
+          <label class="field inline grow">
+            <span>Cerca</span>
+            <input id="daysSearch" type="text" placeholder="Tipster o descrizione..." />
+          </label>
         </div>
+      </div>
 
-        <div class="sectionTitle">In corso</div>
-        <div class="table" id="listOpen"></div>
-
-        <div class="sectionTitle" style="margin-top:14px;">Chiuse</div>
-        <div class="table" id="listClosed"></div>
-
-        <p class="hint">Bottoni rapidi per chiudere al volo oppure Modifica.</p>
-      </section>
-    </section>
-
-    <!-- ===================== PAGE: GIORNI ===================== -->
-    <section class="page" id="page-days">
-      <section class="card">
+      <div class="card">
         <div class="row between">
-          <div class="h2">Giorni</div>
-          <div class="hint">Profitto = solo scommesse chiuse (in corso non influenzano).</div>
+          <div class="cardTitle">Saldo cumulativo (chiuse)</div>
+          <div class="hint">Per giorno</div>
         </div>
-
-        <div class="table" id="daysList"></div>
-      </section>
-    </section>
-
-    <!-- ===================== PAGE: STATISTICHE ===================== -->
-    <section class="page" id="page-stats">
-      <section class="card">
-        <div class="h2">Statistiche</div>
-
-        <div class="stats">
-          <div class="stat"><div class="k">Scommesse</div><div class="v" id="sTotal">0</div></div>
-          <div class="stat"><div class="k">Chiuse</div><div class="v" id="sClosed">0</div></div>
-          <div class="stat"><div class="k">Win rate</div><div class="v" id="sWR">0%</div></div>
-          <div class="stat"><div class="k">Puntato (chiuse)</div><div class="v" id="sStaked">€ 0</div></div>
-          <div class="stat"><div class="k">Profitto (chiuse)</div><div class="v" id="sProfit">€ 0</div></div>
-          <div class="stat"><div class="k">ROI</div><div class="v" id="sROI">0%</div></div>
+        <div class="chartWrap">
+          <canvas id="cDays" class="chart" height="240"></canvas>
         </div>
+      </div>
 
-        <div class="charts">
-          <div class="chartCard">
-            <div class="chartTitle">Andamento bankroll (solo chiuse)</div>
-            <canvas id="cBank" width="600" height="240"></canvas>
-          </div>
-
-          <div class="chartCard">
-            <div class="chartTitle">Esiti (chiuse)</div>
-            <canvas id="cPie" width="600" height="240"></canvas>
-          </div>
-
-          <div class="chartCard">
-            <div class="chartTitle">Profitto per tipster (chiuse)</div>
-            <canvas id="cTip" width="600" height="260"></canvas>
-          </div>
-        </div>
-      </section>
-    </section>
-
-    <!-- ===================== PAGE: TIPSTER ===================== -->
-    <section class="page" id="page-tipster">
-      <section class="card">
+      <div class="card">
         <div class="row between">
-          <div class="h2">Tipster</div>
-          <button class="btn ghost" id="btnTipRefresh">Aggiorna</button>
+          <div class="cardTitle">Riepilogo per giorno</div>
+          <div class="hint">Tocca un giorno per aprire</div>
         </div>
-
-        <div class="table" id="tipList"></div>
-        <p class="hint">Statistiche calcolate sulle scommesse chiuse.</p>
-      </section>
+        <div id="daysList"></div>
+      </div>
     </section>
 
+    <!-- Statistiche -->
+    <section id="page-stats" class="page">
+      <div class="card">
+        <div class="cardTitle">Statistiche</div>
+
+        <div class="statsGrid">
+          <div class="stat">
+            <div class="statLabel">Totali</div>
+            <div id="sTotal" class="statValue">0</div>
+          </div>
+          <div class="stat">
+            <div class="statLabel">Chiuse</div>
+            <div id="sClosed" class="statValue">0</div>
+          </div>
+          <div class="stat">
+            <div class="statLabel">WR</div>
+            <div id="sWR" class="statValue">0%</div>
+          </div>
+          <div class="stat">
+            <div class="statLabel">Puntato (chiuse)</div>
+            <div id="sStaked" class="statValue">€ 0,00</div>
+          </div>
+          <div class="stat">
+            <div class="statLabel">Profitto (chiuse)</div>
+            <div id="sProfit" class="statValue">€ 0,00</div>
+          </div>
+          <div class="stat">
+            <div class="statLabel">ROI su base</div>
+            <div id="sROI" class="statValue">0%</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row between">
+          <div class="cardTitle">Bankroll (solo chiuse)</div>
+          <div class="hint">Parte dal bankroll iniziale</div>
+        </div>
+        <div class="chartWrap">
+          <canvas id="cBank" class="chart" height="240"></canvas>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="cardTitle">Esiti (chiuse)</div>
+          <div class="chartWrap">
+            <canvas id="cPie" class="chart" height="240"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row between">
+            <div class="cardTitle">Top Tipster (profit)</div>
+            <button id="btnTipRefresh" class="btn mini">Aggiorna</button>
+          </div>
+          <div class="chartWrap">
+            <canvas id="cTip" class="chart" height="240"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row between">
+          <div class="cardTitle">Tipster</div>
+          <div class="hint">Solo chiuse</div>
+        </div>
+        <div id="tipList"></div>
+      </div>
+    </section>
+
+    <!-- Bookmakers -->
+    <section id="page-books" class="page">
+      <div class="card">
+        <div class="row between">
+          <div class="cardTitle">Bookmakers</div>
+          <button id="btnSplitEven" class="btn">Ripartisci equamente</button>
+        </div>
+
+        <div class="statsGrid" style="margin-top:12px">
+          <div class="stat">
+            <div class="statLabel">Totale iniziale</div>
+            <div id="bkTotalStart" class="statValue">€ 0,00</div>
+          </div>
+          <div class="stat">
+            <div class="statLabel">Totale disponibile</div>
+            <div id="bkTotalNow" class="statValue">€ 0,00</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row gap wrap">
+          <label class="field inline grow">
+            <span>Nome</span>
+            <input id="bkName" type="text" placeholder="Es. Bet365" />
+          </label>
+          <label class="field inline">
+            <span>Budget iniziale €</span>
+            <input id="bkBudget" type="number" inputmode="decimal" step="0.01" placeholder="100" />
+          </label>
+          <button id="btnAddBook" class="btn primary">Aggiungi</button>
+        </div>
+
+        <div class="hint">Puoi eliminare un bookmaker solo se non è usato da nessuna bet.</div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle">Elenco</div>
+        <div id="bookList"></div>
+      </div>
+    </section>
   </main>
 
-  <!-- Bottom nav -->
+  <!-- Tabbar -->
   <nav class="tabbar">
     <button class="tab active" data-page="page-add">➕<span>Aggiungi</span></button>
     <button class="tab" data-page="page-bets">📋<span>Scommesse</span></button>
-    <button class="tab" data-page="page-days">📅<span>Giorni</span></button>
-    <button class="tab" data-page="page-stats">📈<span>Stats</span></button>
-    <button class="tab" data-page="page-tipster">👤<span>Tipster</span></button>
+    <button class="tab" data-page="page-days">📆<span>Giorni</span></button>
+    <button class="tab" data-page="page-stats">📈<span>Statistiche</span></button>
+    <button class="tab" data-page="page-books">🏦<span>Bookmakers</span></button>
   </nav>
 
   <!-- Modal edit -->
-  <div class="modal" id="modal">
+  <div id="modal" class="modal" aria-hidden="true">
     <div class="sheet">
       <div class="row between">
-        <div class="h2">Modifica scommessa</div>
-        <button class="btn ghost" id="btnClose">Chiudi</button>
+        <div class="sheetTitle">Modifica scommessa</div>
+        <button id="btnClose" class="iconBtn" aria-label="Chiudi">✕</button>
       </div>
 
-      <div class="grid">
-        <label class="field"><span>Data</span><input class="input" type="date" id="eDate"></label>
-        <label class="field"><span>Tipster</span><input class="input" id="eTipster"></label>
-        <label class="field col2"><span>Evento</span><input class="input" id="eDesc"></label>
-        <label class="field"><span>Quota</span><input class="input" type="number" step="0.01" id="eOdds"></label>
-        <label class="field"><span>Stake %</span><input class="input" type="number" step="0.01" id="eStakePct"></label>
-        <label class="field"><span>Puntata €</span><input class="input" type="number" step="0.01" id="eStakeAmt"></label>
-        <label class="field"><span>Esito</span>
-          <select class="input" id="eOutcome">
-            <option>In corso</option><option>Vinta</option><option>Persa</option><option>Void</option>
+      <div class="formGrid">
+        <label class="field">
+          <span>Data</span>
+          <input id="eDate" type="date" />
+        </label>
+
+        <label class="field">
+          <span>Bookmaker</span>
+          <select id="eBook"></select>
+        </label>
+
+        <label class="field">
+          <span>Tipster</span>
+          <input id="eTipster" type="text" />
+        </label>
+
+        <label class="field fieldWide">
+          <span>Descrizione</span>
+          <input id="eDesc" type="text" />
+        </label>
+
+        <label class="field">
+          <span>Quota</span>
+          <input id="eOdds" type="number" inputmode="decimal" step="0.01" />
+        </label>
+
+        <label class="field">
+          <span>Puntata % (su base)</span>
+          <input id="eStakePct" type="number" inputmode="decimal" step="0.01" />
+        </label>
+
+        <label class="field">
+          <span>Puntata € (manuale)</span>
+          <input id="eStakeAmt" type="number" inputmode="decimal" step="0.01" />
+        </label>
+
+        <label class="field">
+          <span>Esito</span>
+          <select id="eOutcome">
+            <option>In corso</option>
+            <option>Vinta</option>
+            <option>Persa</option>
+            <option>Void</option>
           </select>
         </label>
-        <div class="field"><span>&nbsp;</span><button class="btn" id="btnSave">Salva</button></div>
       </div>
 
-      <div class="row between" style="margin-top:12px;">
-        <button class="btn danger" id="btnDelete">Elimina</button>
-        <div class="hint">Le modifiche ricalcolano budget e statistiche.</div>
+      <div class="row between gap">
+        <button id="btnDelete" class="btn danger">🗑 Elimina</button>
+        <button id="btnSave" class="btn primary">Salva</button>
+      </div>
+
+      <div class="hint" style="margin-top:10px">
+        Nota: se il bookmaker non ha abbastanza disponibile, lo stake viene automaticamente limitato.
       </div>
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
