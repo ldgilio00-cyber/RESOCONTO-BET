@@ -38,6 +38,22 @@
   <main class="main">
     <!-- Aggiungi -->
     <section id="page-add" class="page show">
+
+      <div class="card">
+        <div class="cardTitle">Bankroll base</div>
+        <div class="row gap wrap">
+          <label class="field inline grow">
+            <span>Bankroll iniziale (base)</span>
+            <input id="inpBudget" type="number" inputmode="decimal" step="0.01" placeholder="Es. 500" />
+          </label>
+          <button id="btnSetBudget" class="btn">Salva bankroll</button>
+        </div>
+        <div class="hint">
+          La <b>puntata %</b> è sempre calcolata su questo bankroll base (non sul disponibile).
+          I budget dei bookmakers si gestiscono nella pagina <b>Bookmakers</b>.
+        </div>
+      </div>
+
       <div class="card">
         <div class="cardTitle">Aggiungi scommessa</div>
 
@@ -124,7 +140,7 @@
 
           <label class="field inline grow">
             <span>Cerca</span>
-            <input id="search" type="text" placeholder="Tipster o descrizione..." />
+            <input id="search" type="text" placeholder="Tipster, descrizione o bookmaker..." />
           </label>
         </div>
       </div>
@@ -162,7 +178,7 @@
 
           <label class="field inline grow">
             <span>Cerca</span>
-            <input id="daysSearch" type="text" placeholder="Tipster o descrizione..." />
+            <input id="daysSearch" type="text" placeholder="Tipster, descrizione o bookmaker..." />
           </label>
         </div>
       </div>
@@ -261,17 +277,17 @@
       <div class="card">
         <div class="row between">
           <div class="cardTitle">Bookmakers</div>
-          <button id="btnSplitEven" class="btn">Ripartisci equamente</button>
+          <button id="btnBmEven" class="btn">Ripartisci equamente</button>
         </div>
 
         <div class="statsGrid" style="margin-top:12px">
           <div class="stat">
             <div class="statLabel">Totale iniziale</div>
-            <div id="bkTotalStart" class="statValue">€ 0,00</div>
+            <div id="bmTotalStart" class="statValue">€ 0,00</div>
           </div>
           <div class="stat">
             <div class="statLabel">Totale disponibile</div>
-            <div id="bkTotalNow" class="statValue">€ 0,00</div>
+            <div id="bmTotalAvail" class="statValue">€ 0,00</div>
           </div>
         </div>
 
@@ -280,13 +296,13 @@
         <div class="row gap wrap">
           <label class="field inline grow">
             <span>Nome</span>
-            <input id="bkName" type="text" placeholder="Es. Bet365" />
+            <input id="bmName" type="text" placeholder="Es. Bet365" />
           </label>
           <label class="field inline">
             <span>Budget iniziale €</span>
-            <input id="bkBudget" type="number" inputmode="decimal" step="0.01" placeholder="100" />
+            <input id="bmStart" type="number" inputmode="decimal" step="0.01" placeholder="100" />
           </label>
-          <button id="btnAddBook" class="btn primary">Aggiungi</button>
+          <button id="btnBmAdd" class="btn primary">Aggiungi</button>
         </div>
 
         <div class="hint">Puoi eliminare un bookmaker solo se non è usato da nessuna bet.</div>
@@ -294,7 +310,7 @@
 
       <div class="card">
         <div class="cardTitle">Elenco</div>
-        <div id="bookList"></div>
+        <div id="booksList"></div>
       </div>
     </section>
   </main>
